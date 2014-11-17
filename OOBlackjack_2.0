@@ -1,0 +1,293 @@
+
+class Deck
+
+  attr_accessor :deck, :cards
+
+  def initialize
+    @deck = {}
+  end
+
+  def make_cards
+    cards = {}
+    (2..10).each { |v| cards[v] = v }
+    cards["Jack"] = 10
+    cards["Queen"] = 10
+    cards["King"] = 10
+    cards["Ace"] = 11
+    cards
+  end
+
+  def make_deck
+    hearts = make_cards.map { |k , v| [" ♥#{k} of Hearts♥" , v] }
+    diamonds = make_cards.map { |k, v| [" ♦︎#{k} of Diamonds♦︎", v] }
+    clubs = make_cards.map { |k , v| [" ♣︎#{k} of Clubs♣︎" , v] }
+    spades = make_cards.map { |k , v| [" ♠︎#{k} of Spades♠︎" , v] }
+    self.deck = hearts + diamonds + clubs + spades
+    multiple_decks
+  end
+
+  def multiple_decks
+    self.deck = deck + deck
+    self.deck.shuffle!
+  end
+
+  def create_blackjackdeck
+    make_cards
+    make_deck
+  end
+
+  def deal_cards(playershand)
+    newcard = Hash[*deck.shift]
+    playershand.merge!(newcard)
+    newcard
+  end 
+end
+
+
+class Player
+
+  def player_value_calc(playershand)
+    playervalue = 0
+    playershand.each_value{ |v| playervalue += v }
+    playervalue
+  end
+
+  def player_value(playershand)
+    if playershand.has_value?(11)
+      aces = playershand.select { |_, v| v == 11 }
+      aces.count.times do
+        ace = aces.shift
+        if player_value_calc(playershand) > Blackjack::BLACKJACK_NUMBER
+          ace[1] = 1
+          playershand.merge!(Hash[*ace.collect { |x| x }])
+        end
+      end
+    end
+    player_value_calc(playershand)
+  end
+
+end
+
+class UserPlayer < Player
+
+  attr_accessor :uservalue, :playerstay, :userhand, :name
+  
+  def initialize
+    @uservalue = 0
+    @playerstay = false
+    @userhand = {}
+    @name
+  end
+
+  def show_hand
+    system 'clear'
+    self.uservalue = player_value(userhand)
+    puts "--|Blackjack|--".center(70)
+    puts 
+    puts "---Your Cards:---"
+    puts 
+    userhand.each_key { |k| puts "=> #{k}" }
+    puts
+    puts "Total: #{uservalue}\n\n"
+  end
+
+  def full_display
+    show_hand
+  end
+end
+
+class CompDealer < Player
+
+  attr_accessor :dealervalue, :dealerhand, :dealerchoice, :dealerstay
+
+  def initialize
+    @dealervalue = 0
+    @dealerhand = {}
+    @dealerchoice = nil
+    @dealerstay = false
+  end
+
+  def show_card
+    print "\n---Dealers Second Card:---\n\n"
+    print "=> #{dealerhand.to_a[1][0]}"
+  end
+
+end
+
+class Blackjack
+
+  attr_accessor :user, :dealer, :deck
+
+  BLACKJACK_NUMBER = 21
+  DEALER_HIT = 17
+
+  def initialize
+    system 'clear'
+    puts "--|Welcome to Blackjack|--".center(70)
+    @deck = Deck.new
+    @user = UserPlayer.new
+    @dealer = CompDealer.new
+  end
+
+  def dealer_hit_stay
+    dealer.dealervalue = dealer.player_value(dealer.dealerhand)
+    if dealer.dealervalue < DEALER_HIT
+      deck.deal_cards(dealer.dealerhand).each{ |c, v| dealer.dealerhand[c] = v}
+      dealer.dealerchoice = "-Dealer Hits-".center(70)
+    elsif dealer.dealervalue <= BLACKJACK_NUMBER
+      dealer.dealerchoice = "-Dealer Stays-".center(70)
+      dealer.dealerstay = true
+    end
+  end
+
+  def user_hit_stay
+    begin
+      user.full_display
+      dealer.show_card
+      if winner then break end
+      sleep 1.0
+      print "\n\n#{dealer.dealerchoice}"
+      print "\n\n  Hit or Stay? (h/s)  \n"
+      hitstay = gets.chomp.downcase 
+      if "h" == hitstay
+        deck.deal_cards(user.userhand).each{ |c, v| user.userhand[c] = v}
+        user.full_display
+      elsif "s" == hitstay
+        user.playerstay = true
+      else
+        puts 'Error: Please Enter an "h" or "s"'.center(70)
+        sleep 0.75
+      end
+    end until hitstay == "h" || hitstay == "s"
+  end
+
+  def print_values
+    "\n\n" + "Dealer: #{dealer.dealervalue}  #{user.name}: #{user.uservalue}".center(70) + "\n\n\n" 
+  end
+
+  def blackjack_flash
+    user.show_hand
+    sleep 0.5
+    userblackjack = "Blackjack, #{user.name} Wins!"
+    4.times do
+      print "\r" + "#{userblackjack}".center(70)
+      sleep 0.5
+      print "\r" + "#{ ' ' * userblackjack.size }".center(70)
+      sleep 0.5
+    end
+    print "\r" + "#{userblackjack}".center(70) + "\n"
+  end
+
+  def winner
+    if hit_blackjack == 1
+      return true
+    elsif hit_blackjack == 0
+      return "#{print_values}" + "BlackJack, The Dealer Wins.".center(70)
+    elsif busted? == 1
+      return "#{print_values}" + "Sorry #{user.name}, you are over 21.".center(70)
+    elsif busted? == 0
+      return"#{print_values}" + "The Dealer Busted, #{user.name} Wins!".center(70)
+    elsif players_stay
+      if user.uservalue > dealer.dealervalue
+        return "#{print_values}" + "#{user.name} Wins!".center(70)
+      else
+        return "#{print_values}" + "Sorry, Dealer wins.".center(70)
+      end
+    else
+      return false
+    end
+  end
+
+  def print_winner
+    user.show_hand
+    if hit_blackjack == 1
+      blackjack_flash
+    else
+      puts winner
+    end
+  end
+
+  def players_stay
+  (user.playerstay) && (dealer.dealerstay)
+  end 
+
+ def deal_cards
+    2.times do
+      deck.deal_cards(user.userhand)
+      deck.deal_cards(dealer.dealerhand)
+    end
+    dealer.dealervalue = dealer.player_value(dealer.dealerhand)
+    user.uservalue = user.player_value(user.userhand)
+  end
+
+  def get_name
+    if user.name == nil
+      puts "\nEnter Name:"
+      user.name = gets.chomp
+    end
+  end
+
+  def player_turn
+    if !winner  
+      if !user.playerstay
+        user_hit_stay
+      end
+    end
+  end
+
+  def dealer_turn
+    if !winner
+      dealer_hit_stay
+    end
+  end 
+
+  def play_again?
+    sleep 1.25
+    puts "\n\nWould you like to play again?\n"
+    begin 
+      answer = gets.chomp.downcase
+      if ['y', 'n'].include?(answer)
+        puts 'Please Enter "y" for Yes and "n" for No.'
+      end
+    end until ['y', 'n'].include?(answer)
+    if answer.include? "y"
+      name = user.name
+      self.user = UserPlayer.new
+      self.dealer = CompDealer.new
+      self.deck = Deck.new
+      user.name = name
+    else
+      exit
+    end
+  end
+
+  def hit_blackjack
+    if user.uservalue == BLACKJACK_NUMBER then return 1
+    elsif dealer.dealervalue == BLACKJACK_NUMBER then return 0
+    end
+  end
+
+  def busted?
+    if user.uservalue > BLACKJACK_NUMBER then return 1
+    elsif dealer.dealervalue > BLACKJACK_NUMBER then return 0
+    end
+  end
+  
+  def play
+    loop do
+      get_name
+      deck.create_blackjackdeck
+      deal_cards
+      loop do
+        if winner then break end
+        player_turn
+        if winner then break end
+        dealer_turn
+      end 
+        print_winner
+        play_again?
+    end
+  end
+end
+
+Blackjack.new.play
